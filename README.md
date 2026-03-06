@@ -15,7 +15,7 @@ The **Smart Encoder Motor Driver** is designed to control DC motors with magneti
 
 ## Firmware
 
-Find the main.c file <a href="[https://github.com/egeozgul/Incremental-3D-Reconstruction-SfM/blob/main/3D_Reconstruction_of_KizKulesi.ipynb](https://github.com/egeozgul/Servo-Motor-Feedback-Controller/tree/main/SourceCode/Src)">in this.</a> folder 
+Find the main.c file <a href="https://github.com/egeozgul/Servo-Motor-Feedback-Controller/tree/main/SourceCode/Src">in this</a> folder.
 
 ## Key Features
 - **Built-in Feedback Controller**: High-frequency PID control for precise motor operation.
