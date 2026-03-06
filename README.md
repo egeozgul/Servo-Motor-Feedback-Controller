@@ -13,6 +13,10 @@
 
 The **Smart Encoder Motor Driver** is designed to control DC motors with magnetic or optical encoders. It features a built-in feedback controller and H-bridge, allowing precise motor power adjustment based on commands from a master device. Powered by the **STM32C0 microcontroller** and equipped with a **PID feedback system**, this driver ensures reliable and efficient motor control.
 
+## Firmware
+
+Find the main.c file <a href="[https://github.com/egeozgul/Incremental-3D-Reconstruction-SfM/blob/main/3D_Reconstruction_of_KizKulesi.ipynb](https://github.com/egeozgul/Servo-Motor-Feedback-Controller/tree/main/SourceCode/Src)">in this.</a> folder 
+
 ## Key Features
 - **Built-in Feedback Controller**: High-frequency PID control for precise motor operation.
 - **Trapezoidal Trajectory Planner**: Ensures smooth acceleration and deceleration by generating motion profiles for precise movement control.
