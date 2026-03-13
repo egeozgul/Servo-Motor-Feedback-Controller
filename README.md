@@ -1,7 +1,7 @@
 # Servo Motor Feedback Controller
 
 <p align="center">
-  <img src="pcb.png" alt="Encoder Motor Driver - Front View" width="70%" height="auto"/>
+  <img src="pcb_.png" alt="Encoder Motor Driver - Front View" width="70%" height="auto"/>
 </p>
 
 
