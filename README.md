@@ -1,7 +1,7 @@
 # Smart Encoder Motor Driver
 
 <p align="center">
-  <img src="pcb_.png" alt="Smart Encoder Motor Driver — Front View" width="100%" height="auto"/>
+  <img src="pcb__.png" alt="Smart Encoder Motor Driver — Front View" width="100%" height="auto"/>
 </p>
 
 ## PCB Assembly Video
