@@ -49,7 +49,6 @@ The plots below were captured using the custom live UART plotter and show a repr
 2. **Velocity**
 3. **Motor current draw**
 
-![Motion profile plot](https://github.com/user-attachments/assets/ec2e79d4-fb35-4699-954e-250158fb1edc)
 
 <img width="1445" height="1156" alt="Screenshot 2026-05-06 233522" src="https://github.com/user-attachments/assets/e0c2af27-1136-4754-9727-0a1fa3f53b00" />
 
