@@ -92,16 +92,6 @@ Connect an ST-Link V2 to the TC2030 SWD footprint (SWDIO, SWCLK, GND, 3.3 V) and
 
 ---
 
-## Live UART Plotter
-
-A browser-based plotter for real-time monitoring — no installation required.
-
-🔗 [Open Live UART Plotter](https://egeozgul.github.io/live-uart/)
-
-Connect via a USB-to-UART adapter, select the COM port, set baud rate to 115200, and send `LOG 250` to start streaming.
-
----
-
 ## Repository Contents
 
 | Path | Description |
