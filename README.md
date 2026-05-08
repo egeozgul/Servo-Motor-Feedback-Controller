@@ -8,12 +8,6 @@ An open-source, closed-loop DC motor driver with embedded PID control and trapez
 
 ---
 
-## PCB Assembly Video
-
-[![Watch the assembly video](https://img.youtube.com/vi/LhhGqf6qH90/maxresdefault.jpg)](https://youtu.be/LhhGqf6qH90)
-
----
-
 ## Key Features
 
 | Feature | Details |
@@ -30,13 +24,40 @@ An open-source, closed-loop DC motor driver with embedded PID control and trapez
 
 ---
 
+## Hardware
+
+**Fully assembled PCB:**
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/449203f8-8fd5-4fc8-97ef-0804dd21e011" alt="Fully assembled Smart Encoder Motor Driver PCB" width="80%"/>
+</p>
+
+---
+
+## Quickstart
+
+1. Order the PCB using the Gerber files in `gerber_files/`
+2. Assemble following the [assembly video](https://youtu.be/LhhGqf6qH90)
+3. Flash `firmware_Image.elf` using STM32CubeProgrammer via the TC2030 SWD footprint
+4. Connect your DC motor and encoder to the J4 header
+5. Power the board (5–45 V) via the J1 screw terminal
+6. Connect via UART (115200 baud) or I2C (0x20) and send commands
+
+---
+
+## Flashing the Firmware
+
+Connect an ST-Link V2 to the TC2030 SWD footprint (SWDIO, SWCLK, GND, 3.3 V) and use STM32CubeProgrammer to flash `firmware_Image.elf`, or build from source using STM32CubeIDE with the project in `SourceCode/`.
+
+---
+
 ## How It Works
 
 The host sends a single target position command (`MOVETO 3000`). The onboard trapezoidal trajectory planner computes a smooth motion profile — acceleration, cruise, deceleration — and the PID controller tracks it in real time. No streaming of setpoints from the host is required.
 
 ---
 
-## Trapezoidal Trajectory — Measured Results
+## Measured Results
 
 Five consecutive cycles (0 → 3000 → 0 encoder counts), no load, 12 V supply:
 
@@ -77,20 +98,13 @@ For the full command reference, connector pinouts, daisy-chaining instructions, 
 
 ---
 
-## Quickstart
+## Daisy-Chaining with Qwiic Cables
 
-1. Order the PCB using the Gerber files in `gerber_files/`
-2. Assemble following the [assembly video](https://youtu.be/LhhGqf6qH90)
-3. Flash `firmware_Image.elf` using STM32CubeProgrammer via the TC2030 SWD footprint
-4. Connect your DC motor and encoder to the J4 header
-5. Power the board (5–45 V) via the J1 screw terminal
-6. Connect via UART (115200 baud) or I2C (0x20) and send commands
+Up to 112 units can be connected on a single I2C bus by linking boards in series using standard Qwiic cables — no soldering required. Connect the Qwiic output (J5) of one board to the Qwiic input (J2) of the next.
 
----
-
-## Flashing the Firmware
-
-Connect an ST-Link V2 to the TC2030 SWD footprint (SWDIO, SWCLK, GND, 3.3 V) and use STM32CubeProgrammer to flash `firmware_Image.elf`, or build from source using STM32CubeIDE with the project in `SourceCode/`.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/fbc92872-6157-4653-9876-7cdbfeab308c" alt="Multiple boards daisy-chained using Qwiic cables" width="80%"/>
+</p>
 
 ---
 
@@ -108,23 +122,9 @@ Connect an ST-Link V2 to the TC2030 SWD footprint (SWDIO, SWCLK, GND, 3.3 V) and
 
 ---
 
-## Hardware
+## PCB Assembly Video
 
-**Fully assembled PCB:**
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/449203f8-8fd5-4fc8-97ef-0804dd21e011" alt="Fully assembled Smart Encoder Motor Driver PCB" width="80%"/>
-</p>
-
----
-
-## Daisy-Chaining with Qwiic Cables
-
-Up to 112 units can be connected on a single I2C bus by linking boards in series using standard Qwiic cables — no soldering required. Connect the Qwiic output (J5) of one board to the Qwiic input (J2) of the next.
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/fbc92872-6157-4653-9876-7cdbfeab308c" alt="Multiple boards daisy-chained using Qwiic cables" width="80%"/>
-</p>
+[![Watch the assembly video](https://img.youtube.com/vi/LhhGqf6qH90/maxresdefault.jpg)](https://youtu.be/LhhGqf6qH90)
 
 ---
 
