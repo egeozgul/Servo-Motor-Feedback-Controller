@@ -94,7 +94,7 @@ Commands are sent as plain text terminated with `\n` over UART or I2C.
 
 Telemetry output format: `pos <n>,amps <i>,tps <v>`
 
-For the full command reference, connector pinouts, daisy-chaining instructions, and usage examples see the **[User Guide](USER_GUIDE.md)**.
+For the full command reference, connector pinouts, daisy-chaining instructions, and usage examples see the **[User Guide](docs/USER_GUIDE.md)**.
 
 ---
 
@@ -112,11 +112,12 @@ Up to 112 units can be connected on a single I2C bus by linking boards in series
 
 | Path | Description |
 |---|---|
+| `docs/USER_GUIDE.md` | Full user guide and command reference |
 | `SourceCode/Src/main.c` | Complete STM32 firmware (C) |
 | `gerber_files/` | PCB manufacturing files (Gerber + drill) |
 | `PCB_Design/schematic.png` | Circuit schematic |
 | `PCB_Design/schematic.ipc2581c` | PCB design (IPC-2581C, vendor-neutral) |
-| `pcb_.png` | PCB render |
+| `media/pcb_.png` | PCB render |
 | `firmware_Image.elf` | Pre-compiled firmware image |
 | `assembly.mp4` | PCB assembly walkthrough (also on YouTube) |
 
