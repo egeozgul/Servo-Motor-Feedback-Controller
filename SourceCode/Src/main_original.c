@@ -1923,7 +1923,7 @@ void SystemClock_Config(void)
 	 */
 	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
 	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-	RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV4;
+	RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
 	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
 	{
@@ -1939,7 +1939,7 @@ void SystemClock_Config(void)
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
 	RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV1;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
 	{
 		Error_Handler();
 	}
@@ -1972,7 +1972,7 @@ uint32_t LoadI2CAddress(void)
 static void MX_I2C1_Init(void)
 {
 	hi2c1.Instance = I2C1;
-	  hi2c1.Init.Timing = 0x40000A0B; //100khz
+	  hi2c1.Init.Timing = 0x00C0EAFF; //100khz
 
 
 	  // Usage
@@ -2080,7 +2080,7 @@ static void MX_TIM1_Init(void)
 	htim1.Instance = TIM1;
 	htim1.Init.Prescaler = 0;
 	htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim1.Init.Period = 65535;
+	htim1.Init.Period = 4095;
 	htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim1.Init.RepetitionCounter = 0;
 	htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
