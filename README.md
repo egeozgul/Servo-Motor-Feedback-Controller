@@ -108,14 +108,22 @@ Connect an ST-Link V2 to the TC2030 SWD footprint (SWDIO, SWCLK, GND, 3.3 V) and
 
 ---
 
-## PCB
+## Hardware
+
+**Fully assembled PCB:**
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/449203f8-8fd5-4fc8-97ef-0804dd21e011" alt="PCB Top View" width="80%"/>
+  <img src="https://github.com/user-attachments/assets/449203f8-8fd5-4fc8-97ef-0804dd21e011" alt="Fully assembled Smart Encoder Motor Driver PCB" width="80%"/>
 </p>
 
+---
+
+## Daisy-Chaining with Qwiic Cables
+
+Up to 112 units can be connected on a single I2C bus by linking boards in series using standard Qwiic cables — no soldering required. Connect the Qwiic output (J5) of one board to the Qwiic input (J2) of the next.
+
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/fbc92872-6157-4653-9876-7cdbfeab308c" alt="PCB Assembled" width="80%"/>
+  <img src="https://github.com/user-attachments/assets/fbc92872-6157-4653-9876-7cdbfeab308c" alt="Multiple boards daisy-chained using Qwiic cables" width="80%"/>
 </p>
 
 ---
