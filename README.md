@@ -1,4 +1,4 @@
-# Smart Encoder Motor Driver
+# Servo Motor Feedback Controller
 
 <p align="center">
   <img src="pcb__.png" alt="Smart Encoder Motor Driver" width="80%"/>
