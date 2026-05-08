@@ -1,7 +1,7 @@
 # Servo Motor Feedback Controller
 
 <p align="center">
-  <img src="media/pcb__.png" alt="Smart Encoder Motor Driver" width="80%"/>
+  <img src="pcb__.png" alt="Smart Encoder Motor Driver" width="80%"/>
 </p>
 
 An open-source, closed-loop DC motor driver with embedded PID control and trapezoidal trajectory planning. Built around the STM32C0 microcontroller, the board integrates a full H-bridge, quadrature encoder interface, and a real-time PID feedback loop on a compact 30 mm × 40 mm PCB. It accepts simple high-level commands over I2C or UART and autonomously handles all low-level motor control.
@@ -72,6 +72,8 @@ Commands are sent as plain text terminated with `\n` over UART or I2C.
 | `STATUS` | Query drive mode | `STATUS` |
 
 Telemetry output format: `pos <n>,amps <i>,tps <v>`
+
+For the full command reference, connector pinouts, daisy-chaining instructions, and usage examples see the **[User Guide](USER_GUIDE.md)**.
 
 ---
 
