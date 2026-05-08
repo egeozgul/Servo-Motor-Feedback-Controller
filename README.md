@@ -50,7 +50,8 @@ The plots below were captured using the custom live UART plotter and show a repr
 3. **Motor current draw**
 
 
-<img width="1445" height="1156" alt="Screenshot 2026-05-06 233522" src="https://github.com/user-attachments/assets/e0c2af27-1136-4754-9727-0a1fa3f53b00" />
+<img width="1319" height="533" alt="Trajectory_plots_5cycles_no_load" src="https://github.com/user-attachments/assets/1d923db1-4959-4971-a14b-bc9a89ad5b6b" />
+
 
 
 ---
