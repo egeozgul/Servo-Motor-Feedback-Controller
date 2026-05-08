@@ -25,6 +25,61 @@
 //#include <stdio.h>
 //#include <string.h>
 //#include <ctype.h>
+#include "stm32c0xx_hal.h"
+
+
+
+
+#define FLASH_USER_START_ADDR (0x08007E00)  // In the last page
+#define FLASH_PAGE_SIZE 2048                 // STM32C011: 2KB per page
+#define FLASH_USER_PAGE_NUM 15               // Last page number (0-15)
+
+HAL_StatusTypeDef SaveToFlash(uint64_t data)
+{
+    // Read current page into buffer (2048 bytes = 256 double-words)
+    uint64_t pageBuffer[256];  // 2048 bytes / 8 = 256 double-words
+    uint64_t* flashPtr = (uint64_t*)0x08007800;  // Start of page 15
+    for (int i = 0; i < 256; i++) {
+        pageBuffer[i] = flashPtr[i];
+    }
+
+    // Update the specific location (0x08007E00 is offset 0x600 from page start)
+    // Offset 0x600 = 1536 bytes = 192 double-words from page start
+    pageBuffer[192] = data;  // 0x600 / 8 = 192
+
+    // Erase and rewrite page 15
+    HAL_FLASH_Unlock();
+
+    FLASH_EraseInitTypeDef eraseInit = {0};
+    uint32_t pageError;
+    eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+    eraseInit.Page = 15;  // Last page
+    eraseInit.NbPages = 1;
+
+    if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK) {
+        HAL_FLASH_Lock();
+        return HAL_ERROR;
+    }
+
+    // Write buffer back (256 double-words for entire page 15)
+    for (int i = 0; i < 256; i++) {
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
+                             0x08007800 + (i * 8),
+                             pageBuffer[i]) != HAL_OK) {
+            HAL_FLASH_Lock();
+            return HAL_ERROR;
+        }
+    }
+
+    HAL_FLASH_Lock();
+    return HAL_OK;
+}
+
+uint64_t LoadFromFlash(void)
+{
+    return *(uint64_t*)FLASH_USER_START_ADDR;
+}
+
 
 
 //#include "stm32c0xx_ll_dma.h"
@@ -102,66 +157,87 @@ int strcmp_embedded(const char *str1, const char *str2) {
 /*Private user code ---------------------------------------------------------*/
 /*USER CODE BEGIN 0 */
 
-
-#define I2C_BUFFER_SIZE 64
-uint8_t i2cRxBuffer[I2C_BUFFER_SIZE];
-uint8_t i2cTxBuffer[I2C_BUFFER_SIZE]; // Sample response data
-
-
-
-#define DMA_BUFFER_SIZE 2048
-uint8_t rxBuffer[DMA_BUFFER_SIZE]  __attribute__((section(".bss")));	// Define the buffer to store received data
+//UART DMA RX BUFFER
+#define DMA_BUFFER_SIZE 256
+uint8_t rxBuffer[DMA_BUFFER_SIZE]  __attribute__((section(".bss")));	//  Define the buffer to store received data
 //uint8_t txBuffer[] = "Hello, DMA UART TX!";	// Define the buffer to be transmitted
 
+//I2C DMA RX BUFFER
+#define I2C_RX_BUFFER_SIZE 512
+uint8_t i2cRxBuffer[I2C_RX_BUFFER_SIZE];
 
+//I2C TX BUFFER
+#define I2C_BUFFER_SIZE 512
+char i2cTxBuffer[I2C_BUFFER_SIZE]; // Sample response data
 
-//char i2cTxBuffer[BUFFER_SIZE];  // The buffer array
-int head = 0;                   // Index for the next write position
-int tail = 0;                   // Index for the next read position
-int is_full = 0;           // Flag to indicate if the buffer is full
+int head = 0;  // Index for the next write position
+int tail = 0;  // Index for the next read position
+int count = 0; // Number of elements in the buffer
 
 // Insert a character into the cyclic buffer
-void buffer_insert(char c) {
+int buffer_insert(char c) {
+    // Check if the buffer is full
+    if (count == I2C_BUFFER_SIZE) {
+        // Buffer is full, decide whether to overwrite or reject
+        // Here we'll return 0 to indicate failure
+        return 0;
 
-	is_full = buffer_is_full();
-
-    i2cTxBuffer[head] = c;  // Write the character at the head position
-    head = (head + 1) % I2C_BUFFER_SIZE;  // Advance the head
-
-    // If the buffer is full, advance the tail to overwrite the oldest character
-    if (is_full == 1) {
-        tail = (tail + 1) % I2C_BUFFER_SIZE;
+        // Alternatively, to overwrite oldest data:
+        // tail = (tail + 1) % I2C_BUFFER_SIZE;
+        // count--;
     }
 
-    // Set the full flag if the head meets the tail
-    if(head == tail)
-    	is_full = 1;
+    i2cTxBuffer[head] = c; // Write the character at the head position
+    head = (head + 1) % I2C_BUFFER_SIZE; // Advance the head
+    count++; // Increment count of elements
+
+    return 1; // Success
 }
 
 // Remove a character from the cyclic buffer
 int buffer_remove(char *c) {
-    if (head == tail && is_full == 0) {
+    if (count == 0) {
         // Buffer is empty
         return 0;
     }
 
-    *c = i2cTxBuffer[tail];  // Read the character at the tail position
-    tail = (tail + 1) % I2C_BUFFER_SIZE;  // Advance the tail
-    is_full = 0;  // Buffer is no longer full after removing an element
-    return 1;
+    *c = i2cTxBuffer[tail]; // Read the character at the tail position
+    tail = (tail + 1) % I2C_BUFFER_SIZE; // Advance the tail
+    count--; // Decrement count of elements
+
+    return 1; // Success
 }
 
 // Check if the buffer is empty
 int buffer_is_empty() {
-    return (head == tail && is_full == 0);
+    return (count == 0);
 }
 
 // Check if the buffer is full
 int buffer_is_full() {
-    return is_full;
+    return (count == I2C_BUFFER_SIZE);
 }
 
+// Get the number of elements in the buffer
+int buffer_get_count() {
+    return count;
+}
 
+void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+
+    // The transmission is complete at this point
+
+    // If you want to clear the buffer:
+    //memset(i2cTxBuffer, 0, I2C_BUFFER_SIZE);
+    //char i2cTxBuffer[BUFFER_SIZE];  // The buffer array
+    //head = 0;                   // Index for the next write position
+    //tail = 0;                   // Index for the next read position
+    //is_full = 0;           // Flag to indicate if the buffer is full
+
+    // Or prepare new data for the next transmission
+    //PrepareNewData(myDataBuffer);
+}
 /**
   * @brief  Transmit in slave mode an amount of data in non-blocking mode with Interrupt
   * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
@@ -216,17 +292,27 @@ static void UART_SendString(char *string, int lenght)
 
 #define I2C  1
 #define UART 0
-int peripheral = UART;
+int peripheral = I2C;
 
 static void printString(const char *string)
 {
-	while (*string)
-    {
-		if(peripheral == UART)
+	if(peripheral == UART)
+	{
+		while (*string)
+		{
 			HAL_UART_Transmit(&huart2, (uint8_t *)string++, 1, HAL_MAX_DELAY);
-		else if(peripheral == I2C)
-			buffer_insert(string++);
-    }
+		}
+	}
+	else if(peripheral == I2C)
+	{
+		while (*string)
+		{
+			char cc = *string;
+			string++;
+			buffer_insert(cc);
+
+		}
+	}
 }
 
 
@@ -348,8 +434,37 @@ static void printFloat(float value, int decimalPlaces)
 
 
 
-
 static void UpdatePWMDutyCycle(uint32_t channel, uint32_t value)
+{
+    // Simply update the compare value (pulse width) rather than reconfiguring everything
+    switch(channel)
+    {
+        case TIM_CHANNEL_1:
+            htim1.Instance->CCR1 = value;
+            break;
+        case TIM_CHANNEL_2:
+            htim1.Instance->CCR2 = value;
+            break;
+        case TIM_CHANNEL_3:
+            htim1.Instance->CCR3 = value;
+            break;
+        case TIM_CHANNEL_4:
+            htim1.Instance->CCR4 = value;
+            break;
+        default:
+            // Invalid channel
+            return;
+    }
+
+    // Only start the channel if it's not already running
+    if ((htim1.Instance->CCER & (TIM_CCER_CC1E << ((channel & 0x1FU) * 4U))) == 0)
+    {
+        HAL_TIM_PWM_Start(&htim1, channel);
+    }
+}
+
+/*
+static void UpdatePWMDutyCycle_(uint32_t channel, uint32_t value)
 {
 	TIM_OC_InitTypeDef sConfigOC ;
 
@@ -363,7 +478,7 @@ static void UpdatePWMDutyCycle(uint32_t channel, uint32_t value)
 	HAL_TIM_PWM_ConfigChannel_optimized(&htim1, &sConfigOC, channel);
 	HAL_TIM_PWM_Start_optimized(&htim1, channel);	// Start PWM
 }
-
+*/
 
 
 volatile int64_t full_encoder_count = 0;	// 32-bit counter
@@ -402,108 +517,106 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //	}
 }
 
-
-#define ABS(number) (number < 0) ? -number : number;
+#define ABS(number) ((number) < 0 ? -(number) : (number))
 
 //period of logging pos, amps, tps
 uint32_t logPeriod = 0;
 uint32_t confirm = 0;
 
 // Define constraints
-float V_max = 20.0f;    // Max velocity
-float A_max = 0.05f;    // Max acceleration
+float V_max = 20.0f; // Max velocity
+float A_max = 0.05f; // Max acceleration
 float controlInterval = 0.01f; // Control interval in seconds (10 ms)
 
 int64_t startPos, targetPos;
 int64_t setpointPos;
-int64_t totalDistance;
+uint64_t totalDistance; // Changed to unsigned to prevent overflow
 int64_t D_accel;
 float T_accel, T_const, T_total;
 int64_t direction = 1;
 int8_t trapezoid = 0;
+float peak_velocity = 0.0f;
 
-
-float currentTime = 0.0f;     // Current time in seconds
-
+float currentTime = 0.0f; // Current time in seconds
 
 // Initialize trajectory parameters
 void initializeTrajectory(int64_t start, int64_t target) {
     startPos = start;
     targetPos = target;
     setpointPos = startPos;
-    totalDistance = targetPos - startPos;
-    if(totalDistance<0)
-    	totalDistance = -totalDistance;
 
-
+    // Calculate direction and absolute distance
+    if (target >= start) {
+        direction = 1;
+        totalDistance = (uint64_t)(target - start); // Safe conversion to unsigned
+    } else {
+        direction = -1;
+        totalDistance = (uint64_t)(start - target); // Safe conversion to unsigned
+    }
 
     // Precompute parameters for acceleration
     D_accel = (int64_t)((V_max * V_max) / (2.0f * A_max));
 
-    int64_t adjusted_D_accel = -1;
-
     if (totalDistance < 2 * D_accel) {
         // Triangular profile: max velocity is not reached
-    	trapezoid = 0;
-        adjusted_D_accel = totalDistance / 2;
-        T_accel = custom_sqrtf(2.0f * adjusted_D_accel / A_max);
-        D_accel = adjusted_D_accel;
+        trapezoid = 0;
+        D_accel = totalDistance / 2;
+        T_accel = custom_sqrtf(2.0f * D_accel / A_max);
         T_const = 0.0f; // No constant velocity phase
+        peak_velocity = A_max * T_accel;
     } else {
         // Trapezoidal profile
-    	trapezoid = 1;
+        trapezoid = 1;
         T_accel = V_max / A_max;
         T_const = (totalDistance - 2 * D_accel) / V_max;
+        peak_velocity = V_max;
     }
 
     // Total time for the trajectory
     T_total = 2.0f * T_accel + T_const;
 
-    printFloat(T_accel,4);
-        printChar(' ');
-    printFloat(T_const,4);
-    printChar(' ');
-    printFloat(adjusted_D_accel,4);
-    printChar(' ');
+    //printFloat(T_accel, 4);
+    //printChar(' ');
+    //printFloat(T_const, 4);
+    //printChar(' ');
+    //printFloat(D_accel, 4);
+    //printChar(' ');
 
-    currentTime = 0.0f;     // Current time in seconds
-
-    direction = (targetPos - startPos)>0?(1):(-1);
+    currentTime = 0.0f;
 }
-
-
 
 int64_t get_full_encoder_count();
 
 // Update trajectory
-void updateTrajectory(float dt)
-{
-	currentTime += dt;
+void updateTrajectory(float dt) {
+    uint64_t displacement; // Changed to unsigned to prevent overflow
+    float remainingTime;
+
+    currentTime += dt;
+
+    if (currentTime >= T_total) {
+        // Trajectory complete
+        setpointPos = targetPos;
+        return;
+    }
 
     if (currentTime <= T_accel) {
         // Acceleration phase
-        setpointPos = startPos + direction*(int64_t)((A_max * currentTime * currentTime) / 2.0f);
-    } else if (currentTime <= T_accel + T_const && trapezoid ==1) {
-        // Constant velocity phase
-        setpointPos = startPos + direction*D_accel + direction*(int64_t)(V_max * (currentTime - T_accel));
-    }
-    else if (currentTime <= T_total) {
+    	displacement = (uint64_t)(A_max * currentTime * currentTime * 0.5f);
+    } else if (currentTime <= T_accel + T_const && trapezoid) {
+        // Constant velocity phase (only for trapezoidal profile)
+        displacement = (uint64_t)(D_accel + (peak_velocity * (currentTime - T_accel)));
+    } else {
         // Deceleration phase
-        float t_decel = currentTime - (T_accel + T_const); // Time elapsed in deceleration phase
-
-        // Ensure deceleration distance formula is consistent
-        float d_decel = V_max * t_decel - 0.5f * A_max * t_decel * t_decel;
-
-        // Compute position considering all phases
-        setpointPos = (int64_t)(startPos
-            + direction * D_accel
-            + direction * (T_const * V_max)
-            + direction * d_decel);
+        remainingTime = T_total - currentTime;
+        displacement = (uint64_t)(totalDistance - (A_max * remainingTime * remainingTime * 0.5f));
     }
 
-    else {
-        // Trajectory complete
-        setpointPos = targetPos;
+    // Apply the displacement in the correct direction without risking overflow
+    if (direction > 0) {
+        setpointPos = startPos + displacement;
+    } else {
+        setpointPos = startPos - displacement;
     }
 }
 
@@ -521,9 +634,9 @@ int64_t get_full_encoder_count()
 //int64_t largeCoutner = signedCounter ;//+ full_encoder_count;
 
 // Define PID constants
-float Kp = 0.0001;      // Proportional gain
-float Ki = 0.0;      // Integral gain
-float Kd = 0.0;     // Derivative gain
+float Kp = 0.0001f;      // Proportional gain
+float Ki = 0.0f;      // Integral gain
+float Kd = 0.0f;     // Derivative gain
 
 // Define PID variables
 static int64_t previousError = 0;
@@ -533,46 +646,112 @@ int64_t targetPos = 0;
 
 #define INTEGRAL_MAX 100
 
-void update_PID()
-{
+float output = 0;
+uint64_t pwmDutyCycle = 0;
+
+void update_PID() {
     // Get the current position and cast it to int64_t for correct signed calculation
-	int64_t currentPos = get_full_encoder_count();
+    int64_t currentPos = get_full_encoder_count();
 
     // Calculate error as a signed difference
-	int64_t error = setpointPos - currentPos;
+    int64_t error = setpointPos - currentPos;
 
-	// Calculate integral (limit to prevent windup)
-	integral += error;
-	if (integral > INTEGRAL_MAX) integral = INTEGRAL_MAX;
-	if (integral < -INTEGRAL_MAX) integral = -INTEGRAL_MAX;
+    // Calculate integral (limit to prevent windup)
+    integral = integral + (float)error;
+    if (integral > INTEGRAL_MAX) integral = INTEGRAL_MAX;
+    if (integral < -INTEGRAL_MAX) integral = -INTEGRAL_MAX;
 
-	// Calculate derivative
-	int64_t derivative = error - previousError;
+    // Calculate derivative
+    int64_t derivative = error - previousError;
+    previousError = error;
 
-	// Calculate PID output
-	double output = (int64_t)(Kp * error + Ki * integral + Kd * derivative)/10;
+    // Calculate PID output with proper float division
+    float output = (Kp * (float)error + Ki * integral + Kd * derivative) / 10.0f;
 
-	// Update the previous error
-	previousError = error;
+    // Determine direction and magnitude
+    int forward = (output >= 0) ? 1 : 0;
+    float absOutput = forward ? output : -output;
 
-	// Set the PWM duty cycle based on PID output
-	// Offset from the center and constrain to valid range
-	uint64_t pwmDutyCycle = output;  //htim1.Init.Period / 2 + ;
+    // Convert to duty cycle (unsigned)
+    uint32_t pwmDutyCycle = (uint32_t)absOutput;
 
-	if(output < 0)
-		pwmDutyCycle = -output;
+    // Limit PWM value based on which channel is being used
+    uint32_t maxDuty = htim1.Init.Period;
+    if (pwmDutyCycle > maxDuty) {
+        pwmDutyCycle = maxDuty;
+    }
 
-	if (pwmDutyCycle > htim1.Init.Period) pwmDutyCycle = htim1.Init.Period;
-	if (pwmDutyCycle < 0) pwmDutyCycle = 0;
+    // Apply the output to the H-bridge channels
+    if (forward) {
+        UpdatePWMDutyCycle(TIM_CHANNEL_3, pwmDutyCycle);
+        UpdatePWMDutyCycle(TIM_CHANNEL_4, 0);
 
-	// Apply the output to the H-bridge channels for direction and duty cycle
-	if (output > 0) {
-		UpdatePWMDutyCycle(TIM_CHANNEL_3, pwmDutyCycle); // Forward
-		UpdatePWMDutyCycle(TIM_CHANNEL_4, 0);
-	} else {
-		UpdatePWMDutyCycle(TIM_CHANNEL_3, 0);
-		UpdatePWMDutyCycle(TIM_CHANNEL_4, pwmDutyCycle); // Reverse
-	}
+    } else {
+    	UpdatePWMDutyCycle(TIM_CHANNEL_3, 0);
+    	UpdatePWMDutyCycle(TIM_CHANNEL_4, pwmDutyCycle);
+    }
+}
+
+void update_ImpedanceControl(float dt) {
+    /*
+	// --- Parameters ---
+    float K = 80.0f;              // stiffness
+    float D = 10.0f;              // damping
+    float Kt = 0.12f;             // Nm/A motor torque constant
+    float PI_Kp = 2.0f;           // PI proportional gain
+    float PI_Ki = 15.0f;          // PI integral gain
+    //float dt = 0.01f;             // control loop interval (10 ms)
+
+    // --- Measured states ---
+    int64_t currentPos = get_full_encoder_count();  // ticks
+    float currentVelocity = estimate_velocity();    // user-defined, e.g., from encoder delta
+    float current = get_motor_current();            // Amps, from ADC
+
+    // --- Desired states ---
+    float desiredPos = (float)setpointPos;          // ticks
+    float desiredVel = 0.0f;
+
+    // --- Impedance force ---
+    float pos_error = desiredPos - (float)currentPos;
+    float vel_error = desiredVel - currentVelocity;
+    float target_force = K * pos_error + D * vel_error;
+
+    // --- Measured force via current feedback ---
+    float measured_force = Kt * current;
+
+    // --- PI force controller ---
+    float force_error = target_force - measured_force;
+    static float integral_force = 0;
+    integral_force += force_error * dt;
+
+    // Anti-windup
+    if (integral_force > INTEGRAL_MAX) integral_force = INTEGRAL_MAX;
+    if (integral_force < -INTEGRAL_MAX) integral_force = -INTEGRAL_MAX;
+
+    float output = (PI_Kp * force_error + PI_Ki * integral_force);
+
+    // --- PWM Direction and Magnitude ---
+    int forward = (output >= 0) ? 1 : 0;
+    float absOutput = forward ? output : -output;
+
+    // Convert to PWM duty cycle
+    uint32_t pwmDutyCycle = (uint32_t)absOutput;
+
+    // Limit to timer period
+    uint32_t maxDuty = htim1.Init.Period;
+    if (pwmDutyCycle > maxDuty) {
+        pwmDutyCycle = maxDuty;
+    }
+
+    // Apply to H-bridge
+    if (forward) {
+        UpdatePWMDutyCycle(TIM_CHANNEL_3, pwmDutyCycle);
+        UpdatePWMDutyCycle(TIM_CHANNEL_4, 0);
+    } else {
+        UpdatePWMDutyCycle(TIM_CHANNEL_3, 0);
+        UpdatePWMDutyCycle(TIM_CHANNEL_4, pwmDutyCycle);
+    }
+    */
 }
 
 
@@ -601,8 +780,10 @@ void handleCommand(uint8_t *buffer, int bufferSize, uint16_t commandIndex);
 int driveMode = 0;
 #define MOTOR_FLOAT 			0
 #define MOTOR_BRAKE 			1
-#define MOTOR_PID 		2
-#define MOTOR_TRAPEZOID 	3
+#define MOTOR_PID 				2
+#define MOTOR_TRAPEZOID 		3
+#define MOTOR_SPEED 			4
+#define MOTOR_IMPEDANCE 		5
 
 
 void ProcessCommand(uint8_t *buffer_, int bufferSize, DMA_HandleTypeDef *hdmarx, uint16_t *lastParsedIndex_)
@@ -621,34 +802,6 @@ void ProcessCommand(uint8_t *buffer_, int bufferSize, DMA_HandleTypeDef *hdmarx,
 }
 
 
-int atoi_embedded(const char *str) {
-    // Initialize variables
-    int result = 0;
-    int sign = 1; // Assume positive by default
-
-    // Skip leading whitespace
-    while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r' || *str == '\f' || *str == '\v') {
-        str++;
-    }
-
-    // Check for optional sign
-    if (*str == '-') {
-        sign = -1;
-        str++;
-    } else if (*str == '+') {
-        str++;
-    }
-
-    // Process each character
-    while (*str >= '0' && *str <= '9') {
-        // Accumulate the digit into the result
-        result = result * 10 + (*str - '0');
-        str++;
-    }
-
-    // Return result with the appropriate sign
-    return result * sign;
-}
 
 #define MAX_COMMAND_LENGTH 25
 void handleCommand(uint8_t *buffer, int bufferSize, uint16_t commandIndex)
@@ -685,6 +838,28 @@ void handleCommand(uint8_t *buffer, int bufferSize, uint16_t commandIndex)
 		{
 			//		UART_SendFormattedString("ERROR: Invalid speed value\n");
 		}
+	}
+	else if (strcmp_embedded(commandString, "SET_I2C_ADDR") == 0 && valueString[0] != '\0')
+	{
+		uint64_t i2c_address = atoi_embedded(valueString);
+		if(i2c_address >= 0 || i2c_address <=255)
+		{
+			SaveToFlash(i2c_address);
+			printString("I2C address set to ");
+		}
+		else
+		{
+			printString("Invalid I2C address ");
+		}
+		printString(valueString);
+		printString("\n");
+	}
+	else if (strcmp_embedded(commandString, "READ_I2C_ADDR") == 0)
+	{
+		uint64_t i2c_address  = LoadFromFlash();
+		printString("I2C is ");
+		printInt64(i2c_address);
+		printString("\n");
 	}
 	else if (strcmp_embedded(commandString, "SETPOS") == 0 && valueString[0] != '\0')
 	{
@@ -760,6 +935,14 @@ void handleCommand(uint8_t *buffer, int bufferSize, uint16_t commandIndex)
 		{
 			//printString("STATUS: MOTOR_TRAPEZOID");
 		}
+		else if(driveMode == MOTOR_SPEED)
+		{
+			//printString("STATUS: MOTOR_SPEED");
+		}
+		else if(driveMode == MOTOR_IMPEDANCE)
+		{
+			//printString("STATUS: MOTOR_IMPEDANCE");
+		}
 		else
 		{
 			//printString("STATUS: ERROR");
@@ -822,8 +1005,51 @@ void handleCommand(uint8_t *buffer, int bufferSize, uint16_t commandIndex)
 
 		float Ipropi = Vipropi/1.5f;
 
+		//33/4095/15
+		int64_t decimalPadding = 1000;
+		int64_t tk = t*11/5/4095*decimalPadding;
+
+		printInt64(tk/decimalPadding);
+		printString(".");
+		printInt64(tk%decimalPadding);
+
+		printString(" mA ");
+
 		printFloat(Ipropi,3);
 		printString(" mA\n");
+
+	}
+	else if (strcmp_embedded(commandString, "IMP_CTRL") == 0 && valueString[0] != '\0')
+	{
+		driveMode = MOTOR_IMPEDANCE;
+		targetPos = atoi_embedded(valueString);
+
+
+		if(confirm)
+		{
+			printString("Moving to ");
+			printString(valueString);
+			printChar('\n');
+		}
+
+		startPos = get_full_encoder_count();
+		initializeTrajectory(startPos, targetPos);
+	}
+	else if (strcmp_embedded(commandString, "MOVEAT") == 0 && valueString[0] != '\0')
+	{
+		driveMode = MOTOR_SPEED;
+		//targetSpeed = atoi_embedded(valueString);
+
+
+		if(confirm)
+		{
+			printString("Moving at ");
+			printString(valueString);
+			printChar(' tps\n');
+		}
+
+		//startPos = get_full_encoder_count();
+		//initializeTrajectory(startPos, targetPos);
 	}
 	else if (strcmp_embedded(commandString, "MOVETO") == 0 && valueString[0] != '\0')
 	{
@@ -891,8 +1117,8 @@ void handleCommand(uint8_t *buffer, int bufferSize, uint16_t commandIndex)
 	}
 	else if (strcmp_embedded(commandString, "RESET") == 0)
 	{
-		//printString("RESETTING...");
-		//NVIC_SystemReset();
+		printString("RESETTING...");
+		NVIC_SystemReset();
 	}
 }
 
@@ -902,7 +1128,8 @@ int64_t encoder_currentPos;
 
 uint32_t encoder_lastTick;
 uint32_t encoder_currentTick;
-uint32_t adcReader_lastTick;
+uint32_t timerRecord_currentSense;
+uint32_t timerRecord_velocity;
 
 int computeEncoderCounterPeriod()
 {
@@ -1042,6 +1269,7 @@ void I2C_IRQHandler_User(I2C_HandleTypeDef *hi2c)
         else
         {
         	char removed_char;
+        	//printString("TESTING");
         	buffer_remove(&removed_char);
 
 			// Transmit the next byte
@@ -1055,6 +1283,7 @@ void I2C_IRQHandler_User(I2C_HandleTypeDef *hi2c)
 
         }
     }
+
 
     // Handle STOPF (Stop Flag)
     if (__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_STOPF))
@@ -1096,15 +1325,18 @@ void I2C_IRQHandler_User(I2C_HandleTypeDef *hi2c)
 /*USER CODE END 0 */
 
 
+// And implement a proper transmit callback:
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
 {
-//    printString("I2C_AddrCallback");
+    if (hi2c->Instance == I2C1) {
+        if (TransferDirection == I2C_DIRECTION_RECEIVE) {
 
-	//if (hi2c->Instance == I2C1) {
-    //    printString("I2C_AddrCallback");
-   // }
+            // Start the transmit process
+            HAL_I2C_Slave_Transmit_IT(&hi2c1, i2cTxBuffer, 10);
+            //HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2cTxBuffer, 2, I2C_FIRST_FRAME);
+        }
+    }
 }
-
 
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
@@ -1112,17 +1344,17 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 //    {
         // Process received data
         printString("I2C Received: ");
-        printBuffer((char *)i2cRxBuffer, I2C_BUFFER_SIZE);
+        printBuffer((char *)i2cRxBuffer, I2C_RX_BUFFER_SIZE);
 
         // Restart I2C DMA reception
-        if (HAL_I2C_Slave_Receive_DMA(hi2c, i2cRxBuffer, I2C_BUFFER_SIZE) != HAL_OK)
+        if (HAL_I2C_Slave_Receive_DMA(hi2c, i2cRxBuffer, I2C_RX_BUFFER_SIZE) != HAL_OK)
         {
         	//printString("Failed to restart I2C DMA Receive\n");
         }
     //}
 }
 
-#define BUFFER_SIZE 20  // Size of the cyclic buffer
+#define BUFFER_SIZE 5  // Size of the cyclic buffer
 
 // Cyclic buffer for uint32_t values
 uint32_t currentBuffer[BUFFER_SIZE];
@@ -1144,15 +1376,98 @@ void ADCbuffer_insert(uint32_t newValue) {
 }
 
 // Compute the filtered value using Simple Moving Average
-float filter_sma() {
+float filter_sma(uint32_t *buffer,int bufferCount , int bufferTail,uint32_t bufferSize) {
     uint64_t sum = 0;
     for (int i = 0; i < bufferCount; i++) {
-        sum += currentBuffer[(bufferTail + i) % BUFFER_SIZE];
+        sum += buffer[(bufferTail + i) % bufferSize];
     }
     return (bufferCount > 0) ? (sum / bufferCount) : 0;
 }
 
 
+#define ADC_BUFFER_SIZE 50
+#define VEL_BUFFER_SIZE 4
+
+
+// Circular buffer structure with running sum
+struct CircularBuffer{
+    int32_t *buffer;     // Pointer to buffer array
+    size_t size ;          // Size of the buffer
+    size_t head ;          // Current insertion position
+    size_t count ;         // Number of elements in buffer
+    int64_t sum  ;         // Running sum of all elements
+};
+
+struct CircularBuffer buffer_currentDraw;
+struct CircularBuffer buffer_rpm;
+
+// Insert a new value into the circular buffer
+void buffer_insert__(struct CircularBuffer* cb, int64_t value) {
+	//cb->size = BUFFER_SIZE;
+    // If buffer is full, subtract the value that will be overwritten
+    if (cb->count == cb->size) {
+        cb->sum -= cb->buffer[cb->head];
+    }
+
+    // Add new value to sum
+    cb->sum += value;
+
+    // Store the new value at the current head position
+    cb->buffer[cb->head] = value;
+
+    // Move head to the next position with wrap-around
+    cb->head = (cb->head + 1) % cb->size;
+
+    // Update count (up to maximum size)
+    if (cb->count < cb->size) {
+        cb->count++;
+    }
+}
+
+// Calculate the mean value of the buffer
+int64_t buffer_mean(struct CircularBuffer* cb, int64_t multiplier) {
+	//cb->size = BUFFER_SIZE;
+    // Return 0 if buffer is empty
+    if (cb->count == 0) {
+        return 0;
+    }
+
+    // Return mean using the running sum
+    return (int64_t)cb->sum*multiplier / cb->count;
+}
+
+
+
+// Calculate the exponentially weighted moving average (exponential filter) of the buffer
+float buffer_exponentialFilter(struct CircularBuffer* cb) {
+    // Return 0 if buffer is empty
+    if (cb->count == 0) {
+        return 0.0f;
+    }
+
+    // Define the smoothing factor alpha (0 < alpha <= 1).
+    // A lower alpha results in more smoothing.
+    const float alpha = 0.1f;  // adjust as needed for your application
+
+    // Determine the starting index (the oldest element) in the circular buffer.
+    int start = (cb->head - cb->count + cb->size) % cb->size;
+
+    // Initialize the filter value with the oldest sample.
+    float filtered = cb->buffer[start];
+
+    // Process the rest of the samples applying the exponential filter.
+    // Each new sample contributes to the filtered result based on the factor alpha.
+    for (int i = 1; i < cb->count; i++) {
+        int index = (start + i) % cb->size;
+        filtered = alpha * cb->buffer[index] + (1.0f - alpha) * filtered;
+    }
+
+    return filtered;
+}
+
+
+//HAL_I2C_EV_IRQHandler
+//I2C_Slave_ISR_IT
 int main(void)
 {
 
@@ -1236,8 +1551,10 @@ int main(void)
 	    HAL_Delay(500);
 
 
-	    HAL_StatusTypeDef result = HAL_I2C_Slave_Receive_DMA(&hi2c1, i2cRxBuffer, I2C_BUFFER_SIZE);
+	    HAL_StatusTypeDef result = HAL_I2C_Slave_Receive_DMA(&hi2c1, i2cRxBuffer, I2C_RX_BUFFER_SIZE);
 
+	    //HAL_StatusTypeDef HAL_I2C_Slave_Transmit_IT(I2C_HandleTypeDef *hi2c, uint8_t *pData, uint16_t Size)
+	    HAL_StatusTypeDef result2 = HAL_I2C_Slave_Transmit_IT(&hi2c1, i2cTxBuffer, I2C_BUFFER_SIZE);
 	    //if (result == HAL_OK)
 	    //{
 	        //uint32_t error = HAL_I2C_GetError(&hi2c1);
@@ -1258,8 +1575,9 @@ int main(void)
 	    HAL_Delay(100);
 
 	    //__HAL_I2C_DISABLE_IT(&hi2c1, I2C_IT_ERRI | I2C_IT_TCI | I2C_IT_STOPI | I2C_IT_NACKI | I2C_IT_ADDRI | I2C_IT_RXI);
-	    __HAL_I2C_DISABLE_IT(&hi2c1, I2C_IT_ERRI | I2C_IT_TCI | I2C_IT_NACKI | I2C_IT_RXI);
-	    __HAL_I2C_DISABLE_IT(&hi2c1, I2C_IT_NACKI);
+
+	    //__HAL_I2C_DISABLE_IT(&hi2c1, I2C_IT_ERRI | I2C_IT_TCI | I2C_IT_NACKI | I2C_IT_RXI);
+	    //__HAL_I2C_DISABLE_IT(&hi2c1, I2C_IT_NACKI);
 
 	    HAL_Delay(100);
 	    __HAL_I2C_CLEAR_FLAG(&hi2c1, I2C_FLAG_AF);
@@ -1270,21 +1588,35 @@ int main(void)
 
 		__HAL_I2C_CLEAR_FLAG(&hi2c1, I2C_FLAG_AF | I2C_FLAG_STOPF | I2C_FLAG_OVR | I2C_FLAG_BERR);
 
-		__HAL_I2C_ENABLE_IT(&hi2c1,I2C_IT_STOPI);
-		__HAL_I2C_ENABLE_IT(&hi2c1,I2C_IT_ADDRI);
-		__HAL_I2C_ENABLE_IT(&hi2c1,I2C_IT_TXI);
-
-
-
+		// Enable all needed I2C interrupts
+		__HAL_I2C_ENABLE_IT(&hi2c1, I2C_IT_ADDRI | I2C_IT_TXI | I2C_IT_STOPI);
+		// After I2C initialization
+		__HAL_I2C_ENABLE_IT(&hi2c1, I2C_IT_TXI);
 	    //printString("HAL_I2C_Interrupt_Enabled\n");
 
 	/*Infinite loop */
 	/*USER CODE BEGIN WHILE */
 	//printString("READY\n");
 
+
+
+
+    //int32_t *buffer;     // Pointer to buffer array
+
+	buffer_currentDraw.size = ADC_BUFFER_SIZE;
+	int32_t buffer_adc[ADC_BUFFER_SIZE];
+	buffer_currentDraw.buffer = buffer_adc;
+
+	int32_t buffer_vel[VEL_BUFFER_SIZE];
+	buffer_rpm.size = VEL_BUFFER_SIZE;
+	buffer_rpm.buffer = buffer_vel;
+
+
+
 	encoder_lastPos = get_full_encoder_count();
 	encoder_lastTick = HAL_GetTick();
-	adcReader_lastTick = HAL_GetTick();
+	timerRecord_currentSense = HAL_GetTick();
+	timerRecord_velocity = HAL_GetTick();
 
 	uint32_t frame_lastTick = HAL_GetTick();
 	uint32_t frame_Tick = HAL_GetTick();
@@ -1296,7 +1628,7 @@ int main(void)
 
 
 		static uint16_t lastParsedIndex_i2c = 0;	// Tracks the last parsed index in the DMA buffer
-		ProcessCommand(i2cRxBuffer, I2C_BUFFER_SIZE, (hi2c1.hdmarx), &lastParsedIndex_i2c);
+		ProcessCommand(i2cRxBuffer, I2C_RX_BUFFER_SIZE, (hi2c1.hdmarx), &lastParsedIndex_i2c);
 		__HAL_I2C_CLEAR_FLAG(&hi2c1, I2C_FLAG_AF | I2C_FLAG_STOPF | I2C_FLAG_OVR | I2C_FLAG_BUSY);
 
 
@@ -1305,8 +1637,18 @@ int main(void)
 		encoder_currentPos = get_full_encoder_count();
 		encoder_currentTick = HAL_GetTick();
 
+		if(driveMode == MOTOR_SPEED)
+		{
+			frame_lastTick = frame_Tick;
+			frame_Tick = HAL_GetTick();
 
-		if(driveMode == MOTOR_TRAPEZOID)
+			float dt = (frame_Tick - frame_lastTick)/1000.0f;
+
+			//updateVelocityTrajectory(dt);
+
+			update_PID();
+		}
+		else if(driveMode == MOTOR_TRAPEZOID)
 		{
 
 			frame_lastTick = frame_Tick;
@@ -1318,12 +1660,62 @@ int main(void)
 
 			update_PID();
 		}
+		else if(driveMode == MOTOR_IMPEDANCE)
+		{
 
-		if(driveMode == MOTOR_PID)
+			frame_lastTick = frame_Tick;
+			frame_Tick = HAL_GetTick();
+
+			float dt = (frame_Tick - frame_lastTick)/1000.0f;
+
+			updateTrajectory(dt);
+
+			update_ImpedanceControl(dt);
+		}
+		else if(driveMode == MOTOR_PID)
 		{
 	        setpointPos = targetPos;
 			update_PID();
 		}
+		if(HAL_GetTick() - timerRecord_currentSense > 8)
+		{
+			//ADCbuffer_insert(readADCValue());
+			buffer_insert__(&buffer_currentDraw, readADCValue());
+			timerRecord_currentSense = HAL_GetTick();
+		}
+
+
+
+		static int64_t prev_encoderCount = 0;
+		if(HAL_GetTick() - encoder_lastTick > 80)
+		{
+			//rpm computation:
+			int32_t deltaTick = (int32_t)HAL_GetTick() - (int32_t)encoder_lastTick;
+			int64_t encoderCount = get_full_encoder_count();
+			int64_t deltaCount = (int32_t)(encoderCount - prev_encoderCount);
+
+			int64_t rpm = 0;
+			if(deltaTick == 0)
+			{
+				rpm = 99999999;
+			}
+			else if(deltaTick > 1000)
+			{
+				rpm = 0;
+			}
+			else
+			{
+				rpm = deltaCount*1000/deltaTick;
+			}
+
+			prev_encoderCount = encoderCount;
+
+			buffer_insert__(&buffer_rpm, rpm);
+
+			encoder_lastTick = HAL_GetTick();
+		}
+
+
 
 
 
@@ -1334,20 +1726,17 @@ int main(void)
 				logPeriod = 20;
 			}
 
-			static int64_t prev_encoderCount = 0;
-			if(HAL_GetTick() - adcReader_lastTick > 80)
-			{
-				ADCbuffer_insert(readADCValue());
-				adcReader_lastTick = HAL_GetTick();
-			}
 
-			if(HAL_GetTick() - encoder_lastTick > logPeriod)
+
+
+			if(HAL_GetTick() - timerRecord_velocity > logPeriod)
 			{
 				int64_t encoder_currentPos = get_full_encoder_count();
 
 
 
-				float filtered = filter_sma();
+				//float filtered = filter_sma();
+
 				printString("pos ");
 				printInt64(encoder_currentPos);
 
@@ -1358,46 +1747,69 @@ int main(void)
 		//		printString("ADC:");
 	//			uint32_t t = readADCValue();
 
+				int64_t filtered = buffer_mean(&buffer_currentDraw,1);
+				//float filtered = buffer_exponentialFilter(&buffer_currentDraw);
+
 				float Vipropi = (filtered*(3.3f/4095.0f));
 				float Ipropi = Vipropi/1.5f;
 
 				//printFloat(Ipropi,3);
 				//printString(" mA\n");
 
+				//printString(",amps ");
+				//printFloat(Ipropi,3);
+
+
+				//float Vipropi = ((float)t*(3.3f/4095.0f));
+
+				//float Ipropi = Vipropi/1.5f;
+
+				//33/4095/15
+
+				int64_t decimalPadding = 1000;
+				int64_t filtered2 = buffer_mean(&buffer_currentDraw,decimalPadding);
+				int64_t tk = filtered2*11/5/4095;
+
+
 				printString(",amps ");
-				printFloat(Ipropi,3);
+				printFloat(filtered2,3);
+				printString(" ");
+
+				printString(",dest ");
+				printInt64(setpointPos);
+				printString(" ");
+
+				printString(",output ");
+				printFloat(output,3);
+				printString(" ");
+
+				printString(",pwm ");
+				printInt64(pwmDutyCycle);
+				printString(" ");
 
 
-				//rpm computation:
-				uint32_t deltaTick = HAL_GetTick() - encoder_lastTick;
-				int64_t encoderCount = get_full_encoder_count();
-				int64_t deltaCount = (int32_t)(encoderCount - prev_encoderCount);
+				int64_t filtered_rpm = buffer_mean(&buffer_rpm,1000);
+				//float filtered_rpm = buffer_exponentialFilter(&buffer_rpm);
+				//filter_sma(currentBuffer_rpm,bufferCount_rpm,bufferTail_rpm,bufferSize_rpm,rpm);
 
-				int64_t rpm = 0;
-				if(deltaTick == 0)
-				{
-					rpm = 99999999;
-				}
-				else if(deltaTick > 1000)
-				{
-					rpm = 0;
-				}
-				else
-				{
-					rpm = deltaCount*1000/deltaTick;
-				}
-
-				prev_encoderCount = encoderCount;
 
 				printString(",tps ");
-				printInt64(rpm);
-				printString("\n");
+				printFloat(filtered_rpm/1000,3);
+				//printInt64(rpm);
 
+
+				printString(")\n");
+
+				//printString(",tps2 ");
+				//printInt64(filtered_rpm/decimalPadding);
+				//printString(".");
+				//printInt64(filtered_rpm%decimalPadding);
 				//peripheral = I2C;
 				//printBuffer("(GGGGG)",7);
-				peripheral = UART;
+				//peripheral = UART;
 				//HAL_UART_Transmit(&huart2, i2cTxBuffer, I2C_BUFFER_SIZE, HAL_MAX_DELAY);
-				encoder_lastTick = HAL_GetTick();
+				timerRecord_velocity = HAL_GetTick();
+
 			}
 
 		}
@@ -1532,6 +1944,25 @@ void SystemClock_Config(void)
 		Error_Handler();
 	}
 }
+uint32_t LoadI2CAddress(void)
+{
+    uint64_t flash_data = LoadFromFlash();
+    uint32_t i2c_address;
+
+    // Check if valid data exists
+    if (flash_data == 0xFFFFFFFFFFFFFFFF || flash_data == 0) {
+        return 0x20*2;  // Default address
+    }
+
+    i2c_address = (uint32_t)flash_data;
+
+    // Optional: Validate 7-bit I2C address range
+    if ((i2c_address & 0x7F) < 0x08 || (i2c_address & 0x7F) > 0x77) {
+        return 0x20*2;  // Default if invalid
+    }
+
+    return i2c_address*2;
+}
 
 /**
  *@brief I2C1 Initialization Function
@@ -1542,13 +1973,22 @@ static void MX_I2C1_Init(void)
 {
 	hi2c1.Instance = I2C1;
 	  hi2c1.Init.Timing = 0x40000A0B; //100khz
-	  hi2c1.Init.OwnAddress1 = 64; //0x20
+
+
+	  // Usage
+
+	  //uint32_t i2c_address = (uint32_t)LoadFromFlash();
+
+	  uint32_t i2c_address = LoadI2CAddress();
+	  hi2c1.Init.OwnAddress1 = i2c_address; //0x20
 	  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
 	  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
 	  hi2c1.Init.OwnAddress2 = 0;
 	  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
 	  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-	  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_ENABLE;
+	  //hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_ENABLE;
+	  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+
 	  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
 	  {
 	    Error_Handler();
