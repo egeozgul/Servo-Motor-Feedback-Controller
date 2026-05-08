@@ -29,8 +29,14 @@ An open-source, closed-loop DC motor driver with embedded PID control and trapez
 **Fully assembled PCB:**
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/449203f8-8fd5-4fc8-97ef-0804dd21e011" alt="Fully assembled Smart Encoder Motor Driver PCB" width="80%"/>
+  <img src="https://github.com/user-attachments/assets/449203f8-8fd5-4fc8-97ef-0804dd21e011" alt="Aassembled Driver" width="80%"/>
 </p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/1e855ef4-fa70-4f2b-8ca6-967217773847" alt="Assembled Driver" width="80%"/>
+</p>
+
+
 
 ---
 
