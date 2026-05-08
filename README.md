@@ -103,7 +103,8 @@ For the full command reference, connector pinouts, daisy-chaining instructions, 
 Up to 112 units can be connected on a single I2C bus by linking boards in series using standard Qwiic cables — no soldering required. Connect the Qwiic output (J5) of one board to the Qwiic input (J2) of the next.
 
 <p align="center">
-  <img width="659" height="855" alt="2_devies" src="https://github.com/user-attachments/assets/4bd490ed-4ec4-4fbf-be64-ed2a925046a6" />
+  <img width="859" height="629" alt="2_devies" src="https://github.com/user-attachments/assets/b3d5e39f-86e2-48c6-8d68-4f4b0d2d870a" />
+
 </p>
 
 ---
